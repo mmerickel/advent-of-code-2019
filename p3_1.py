@@ -21,21 +21,24 @@ MOVES = {
 
 def render_path(path):
     x = y = 0
-    points = set()
+    points = []
     for dir, m in path:
         move = MOVES[dir]
         for i in range(m):
             x, y = move(x, y)
-            points.add((x, y))
+            points.append((x, y))
     return points
 
-def find_closest_intersection(a, b):
-    a_pts = render_path(a)
-    b_pts = render_path(b)
-    points = a_pts.intersection(b_pts)
+def find_intersection_points(a, b):
+    return set(a).intersection(b)
+
+def process_input(input):
+    paths = parse_paths(input)
+    points = [render_path(path) for path in paths]
+    intersecting_points = find_intersection_points(*points)
     return min(
         abs(x) + abs(y)
-        for x, y in points
+        for x, y in intersecting_points
     )
 
 @pytest.mark.parametrize('input,expected', [
@@ -51,16 +54,14 @@ def find_closest_intersection(a, b):
     ),
 ])
 def test(input, expected):
-    a, b = parse_paths(input)
-    result = find_closest_intersection(a, b)
+    result = process_input(input)
     assert result == expected
 
 def main():
     with open('p3.input') as fp:
         input = fp.read()
 
-    a, b = parse_paths(input)
-    result = find_closest_intersection(a, b)
+    result = process_input(input)
     print(result)
 
 if __name__ == '__main__':

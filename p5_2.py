@@ -8,8 +8,8 @@ def parse_program(input):
 @dataclass
 class Runtime:
     memory: typing.List[int]
-    input: typing.Iterable[int] = field(default_factory=lambda: iter([]))
-    output: typing.List[int] = field(default_factory=list)
+    input: typing.Iterable[int]
+    output: typing.Callable[[int], None]
 
     i: int = 0
     halt: bool = False
@@ -26,10 +26,36 @@ class Runtime:
         self.memory[x] = value
 
     def read_input(self):
-        return next(self.input)
+        value = next(self.input)
+        return value
 
     def write_output(self, value):
-        self.output.append(value)
+        self.output(value)
+
+    def step(self):
+        assert not self.halt
+        op, params = parse_instruction(self)
+        jump = op.impl(self, *params)
+        if jump is not None:
+            self.i = jump
+        else:
+            self.i += op.num_params + 1
+
+def parse_instruction(ctx):
+    s = str(ctx.memory[ctx.i])
+    opcode = int(s[-2:])
+    op = OPS.get(opcode)
+    if op is None:
+        raise RuntimeError(f'unknown instruction={s} at position={ctx.i}')
+
+    modes = [int(x) for x in s[:-2]]
+    modes.reverse()
+    modes += [0] * (op.num_params - len(modes))
+    params = list(zip(
+        ctx.memory[ctx.i + 1: ctx.i + 1 + op.num_params],
+        modes,
+    ))
+    return op, params
 
 @dataclass
 class Operation:
@@ -89,35 +115,21 @@ def op_8(ctx, x, y, z):
     else:
         ctx.set(z, 0)
 
-def parse_instruction(ctx):
-    s = str(ctx.memory[ctx.i])
-    opcode = int(s[-2:])
-    op = OPS.get(opcode)
-    if op is None:
-        raise RuntimeError(f'unknown instruction={s} at position={ctx.i}')
+def run_program(program, input=(), stream=False):
+    def run():
+        memory = parse_program(program)
+        output = []
+        ctx = Runtime(memory, iter(input), output=output.append)
+        while not ctx.halt:
+            ctx.step()
 
-    modes = [int(x) for x in s[:-2]]
-    modes.reverse()
-    modes += [0] * (op.num_params - len(modes))
-    params = list(zip(
-        ctx.memory[ctx.i + 1: ctx.i + 1 + op.num_params],
-        modes,
-    ))
-    return op, params
+            if output:
+                yield from output
+                output.clear()
 
-def join_params(params, modes):
-    return list(zip(params, modes))
-
-def run_program(program, input=()):
-    ctx = Runtime(program, iter(input))
-    while not ctx.halt:
-        op, params = parse_instruction(ctx)
-        jump = op.impl(ctx, *params)
-        if jump is not None:
-            ctx.i = jump
-        else:
-            ctx.i += op.num_params + 1
-    return ctx.output
+    if stream:
+        return run()
+    return list(run())
 
 @pytest.mark.parametrize('program,input,output', [
     ('3,9,8,9,10,9,4,9,99,-1,8', [7], [0]),
@@ -161,15 +173,13 @@ def run_program(program, input=()):
     ),
 ])
 def test(program, input, output):
-    program = parse_program(program)
     result = run_program(program, input)
     assert result == output
 
 def main():
     with open('p5.input') as fp:
-        input = fp.readline()
+        program = fp.readline()
 
-    program = parse_program(input)
     output = run_program(program, [5])
     print('\n'.join(str(x) for x in output))
 
